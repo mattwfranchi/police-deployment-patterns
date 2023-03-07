@@ -6,4 +6,5 @@ To train our YOLOv7 object classifier, we utilized the following hardware:
 - 4x RTX A6000 GPU
 - 8x CPU (Emma, know specifics?) 
 - 256GB RAM 
+
 This allowed us to use a batch size of 40. 
