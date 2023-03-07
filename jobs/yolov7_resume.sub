@@ -1,0 +1,23 @@
+#!/bin/bash 
+#SBATCH -J yolov7_gen 
+#SBATCH -o /home/mwf62/yolov7_%j.out 
+#SBATCH -e /home/mwf62/yolov7_%j.err 
+#SBATCH --mail-type=ALL 
+#SBATCH --mail-user=mwf62@cornell.edu 
+#SBATCH -N 1
+#SBATCH -n 1 
+#SBATCH --get-user-env 
+#SBATCH --mem=256gb
+#SBATCH -t 100:00:00 
+#SBATCH --partition=pierson
+#SBATCH --gres=gpu:4
+
+pwd
+source /home/mwf62/.bashrc
+ 
+conda info --envs
+source activate /share/pierson/conda_virtualenvs/policing_env
+cd /share/pierson/nexar_data/nexar_yolov7
+export OMP_NUM_THREADS=4
+nvidia-smi 
+python -m torch.distributed.launch --nproc_per_node 4 --master_port 9527 train_aux.py --resume 

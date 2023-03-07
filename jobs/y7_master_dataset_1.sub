@@ -1,0 +1,39 @@
+#!/bin/bash 
+#SBATCH -J y7_detect 
+#SBATCH -o /home/mwf62/y7_detect_%j.out 
+#SBATCH -e /home/mwf62/y7_detect_%j.err 
+#SBATCH --mail-type=ALL 
+#SBATCH --mail-user=mwf62@cornell.edu 
+#SBATCH -N 1
+#SBATCH -n 8
+#SBATCH --get-user-env 
+#SBATCH --mem=96gb
+#SBATCH -t 640:00:00 
+#SBATCH --partition=pierson
+#SBATCH --gres=gpu:1
+
+pwd
+source /home/mwf62/.bashrc
+ 
+conda info --envs
+source activate /share/pierson/conda_virtualenvs/policing_env
+cd /share/pierson/nexar_data/nexar_yolov7
+export OMP_NUM_THREADS=4
+nvidia-smi
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603252800000 --save-txt --save-conf --project 1603252800000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603339200000 --save-txt --save-conf --project 1603339200000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603425600000 --save-txt --save-conf --project 1603425600000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603512000000 --save-txt --save-conf --project 1603512000000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603598400000 --save-txt --save-conf --project 1603598400000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603684800000 --save-txt --save-conf --project 1603684800000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603771200000 --save-txt --save-conf --project 1603771200000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603857600000 --save-txt --save-conf --project 1603857600000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1603944000000 --save-txt --save-conf --project 1603944000000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604030400000 --save-txt --save-conf --project 1604030400000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604116800000 --save-txt --save-conf --project 1604116800000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604203200000 --save-txt --save-conf --project 1604203200000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604293200000 --save-txt --save-conf --project 1604293200000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604379600000 --save-txt --save-conf --project 1604379600000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604466000000 --save-txt --save-conf --project 1604466000000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+python detect.py --weights ./yolov7_gen/yolov710/weights/best.pt --source /share/pierson/nexar_data/raw_data/imgs/oct_15-nov-15/1604552400000 --save-txt --save-conf --project 1604552400000  --device 0 --img-size 1280 --nosave --conf-thres 0.01 --augment --classes 1 &
+wait

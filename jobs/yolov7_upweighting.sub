@@ -1,0 +1,24 @@
+#!/bin/bash 
+#SBATCH -J yolov7_gen 
+#SBATCH -o /home/mwf62/yolov7_%j.out 
+#SBATCH -e /home/mwf62/yolov7_%j.err 
+#SBATCH --mail-type=ALL 
+#SBATCH --mail-user=mwf62@cornell.edu 
+#SBATCH -N 1
+#SBATCH -n 8 
+#SBATCH --get-user-env 
+#SBATCH --mem=128gb
+#SBATCH -t 400:00:00 
+#SBATCH --partition=pierson
+#SBATCH --gres=gpu:1
+
+pwd
+source /home/mwf62/.bashrc
+ 
+conda info --envs
+source activate /share/pierson/conda_virtualenvs/policing_env
+cd /share/pierson/nexar_data/nexar_yolov7
+export OMP_NUM_THREADS=8
+nvidia-smi 
+
+python train_aux.py --workers 8 --device 0 --single-cls --batch-size 44 --data /share/pierson/nexar_data/nexar_yolov7/data/compiled_upweighted.yaml --cfg cfg/training/yolov7-e6e.yaml --weights '' --name yolov7 --img 640 640 --project yolov7_upweighted --hyp data/hyp.scratch.p6.yaml --image-weights --cache-images
