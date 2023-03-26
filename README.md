@@ -37,6 +37,16 @@ For example, users could use GeoPandas to calculate the total area covered by ea
 
 By making this data available for export, the NYCOpenData Police Precincts GIS Boundaries Map provides a valuable resource for those looking to analyze the spatial distribution of law enforcement resources in New York City. It allows users to explore and analyze the data in a way that is flexible and customizable, and can be used to gain insights into a wide range of important issues related to public safety and law enforcement.
 
+### [Census Grouping Boundaries, NYC Boundaries (*GIS Shapefiles*)](https://www.nyc.gov/site/planning/data-maps/open-data/census-download-metadata.page)
+The NYCPlanning Census page is a website that provides a wealth of information on the population and demographic characteristics of New York City. This website is maintained by the New York City Department of City Planning, and is designed to help researchers, policymakers, and the general public better understand the changing demographics of the city.
+
+One of the valuable features of this website is the availability of GIS shapefiles for Census Tracts, Census Blocks, and Neighborhood Tabulation Areas. These are all small, relatively permanent subdivisions of a county or city, defined by the U.S. Census Bureau for the purpose of collecting and analyzing demographic data.
+
+GIS shapefiles are a type of data file that can be used with Geographic Information Systems (GIS) software, such as ArcGIS or QGIS, to perform spatial analysis tasks. These shapefiles provide detailed geographic information about each subdivision, including its boundaries and geographic coordinates.
+
+By providing access to these shapefiles, the NYCPlanning Census page allows users to perform a wide range of spatial analysis tasks related to population and demographic data. For example, users could use GIS software to create maps that show the racial and ethnic composition of different Census Tracts or Neighborhood Tabulation Areas in the city, or to identify areas with high concentrations of poverty or unemployment.
+
+
 
 ## Model Training - Compute Resources 
 To train our YOLOv7 object classifier, we utilized the following hardware: 
