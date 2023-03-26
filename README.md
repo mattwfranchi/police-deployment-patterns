@@ -19,6 +19,16 @@ Some of the specific types of complaints included in this dataset are related to
 
 We filter the dataset to only include crimes from our dataset's period of coverage (March-November 2020), and also only analyze felony-level crimes. 
 
+### [Median Household Income @ CBG Level (*2020 ACS 5-year Estimates*)](https://data.census.gov/table?q=B19013&g=050XX00US36005$1500000,36047$1500000,36061$1500000,36081$1500000,36085$1500000&tid=ACSDT5Y2021.B19013)
+The census table B19013 is a dataset that provides information about the income levels of people living in the block groups of New York City. Block groups are small geographic areas used by the U.S. Census Bureau to divide larger census tracts into smaller, more manageable units.
+
+This dataset is derived from the American Community Survey (ACS), a yearly survey conducted by the U.S. Census Bureau that collects data on various demographic and socioeconomic characteristics of households across the country. The B19013 table specifically provides data on median household income, which is the middle point of all household incomes in a given block group.
+
+The dataset provides a wealth of information on income levels across New York City, which can be used by researchers, policymakers, and community organizations to better understand economic disparities and plan programs to address them. For example, the data could be used to identify neighborhoods with low median incomes, which may be in need of affordable housing or job training programs.
+
+It is important to note that while median household income is a useful measure of overall economic well-being, it does not capture the full range of income levels in a given block group. Additionally, the data is subject to sampling error, as it is based on survey responses from a sample of households rather than a complete count of all households in a given area. However, despite these limitations, the census table B19013 remains a valuable resource for anyone interested in understanding the economic landscape of New York City.
+
+
 ## Model Training - Compute Resources 
 To train our YOLOv7 object classifier, we utilized the following hardware: 
 - 4x RTX A6000 GPU
