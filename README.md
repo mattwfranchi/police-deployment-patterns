@@ -28,6 +28,15 @@ The dataset provides a wealth of information on income levels across New York Ci
 
 It is important to note that while median household income is a useful measure of overall economic well-being, it does not capture the full range of income levels in a given block group. Additionally, the data is subject to sampling error, as it is based on survey responses from a sample of households rather than a complete count of all households in a given area. However, despite these limitations, the census table B19013 remains a valuable resource for anyone interested in understanding the economic landscape of New York City.
 
+### [NYPD Precinct Boundaries (*GIS Shapefile*)](https://data.cityofnewyork.us/Public-Safety/Police-Precincts/78dh-3ptz)
+The NYCOpenData Police Precincts GIS Boundaries Map is an interactive map that displays the geographic boundaries of the police precincts in New York City. This map is made available by the New York City Open Data platform, which provides access to a wide range of publicly available data related to various aspects of life in New York City.
+
+The police precincts in New York City are the local law enforcement units responsible for maintaining public safety and enforcing the law within a defined geographic area. There are 77 police precincts in total, each with its own specific boundaries.The GIS boundaries map allows users to export the data in a variety of formats, including shapefiles and geoJSON files, which can be used with GeoPandas. These data files contain the geographic boundaries of each police precinct, allowing users to perform a wide range of spatial analysis tasks.
+
+For example, users could use GeoPandas to calculate the total area covered by each precinct, or to identify the overlap between different precinct boundaries. They could also use the data to perform spatial joins with other datasets, such as crime data, to identify areas with high crime rates in relation to the location of each precinct.
+
+By making this data available for export, the NYCOpenData Police Precincts GIS Boundaries Map provides a valuable resource for those looking to analyze the spatial distribution of law enforcement resources in New York City. It allows users to explore and analyze the data in a way that is flexible and customizable, and can be used to gain insights into a wide range of important issues related to public safety and law enforcement.
+
 
 ## Model Training - Compute Resources 
 To train our YOLOv7 object classifier, we utilized the following hardware: 
