@@ -48,11 +48,11 @@ rc('text.latex', preamble=r'\usepackage{amsmath} \usepackage[T1]{fontenc}')
 # In[4]:
 
 
-ANL_DATASET_PATH = "/share/pierson/nexar_data/nexar_yolov7/intermediate_notebooks/analysis_dataset.csv"
-FIRST_CHUNK_PATH = "/share/pierson/nexar_data/nypd-deployment-patterns/output/1603771200000.csv"
-VALSET_PATH = "/share/pierson/nexar_data/dashcam-analysis/final_model_metrics/valset_2.csv"
-TESTSET_PATH = "/share/pierson/nexar_data/nexar_yolov7/test_set.csv"
-PAPER_GIT_REPO_PATH = "/share/pierson/nexar_data/nypd-deployment-patterns/plots"
+ANL_DATASET_PATH = "../output/analysis_dataset.csv"
+FIRST_CHUNK_PATH = "../output/1603771200000.csv"
+VALSET_PATH = "../valset.csv"
+TESTSET_PATH = "../testset.csv"
+PAPER_GIT_REPO_PATH = "../plots"
 
 
 # ### Geographic 
@@ -70,8 +70,8 @@ NYC_COUNTY_CODES = ['005', '047', '061', '081', '085']
 # In[6]:
 
 N_BOOTSTRAPS = 10
+BOOTSTRAP_OUTPUT_DIR='../output/bootstraps'
 ZONE_THRESHOLD = 0.5 # threshold for zone classification
-BASE_CHUNKS_PATH = '/share/pierson/nexar_data/FINAL_CHUNKS/%i.csv'
 COLS_TO_DEDUPLICATE_ON = ['lat', 'lng', 'timestamp'] # columns to use to check for duplicates
 MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS = datetime.datetime(2020, 10, 5, 0, 0, 0, tzinfo=ZoneInfo('US/Eastern')) # don't use data before this data to analyze disparities / demographics
 POSITIVE_CLASSIFICATION_THRESHOLD = 0.770508 # threshold to define a positive prediction
@@ -116,7 +116,7 @@ def load_analysis_dataset(load_in_chunks=False, load_first_chunk=False, use_pyar
     return d
 
 
-d = load_analysis_dataset(load_first_chunk=True)
+d = load_analysis_dataset(use_pyarrow=True)
 
 
 
@@ -230,7 +230,7 @@ COLS_TO_FILL_NA = ['conf', 'distance_from_nearest_police_station', 'distance_fro
 d = fill_na_data(d, COLS_TO_FILL_NA)
 
 
-cbg_zone_data = pd.read_csv('/share/pierson/nexar_data/5_other_datasets/cbgs_zone_data.csv')
+cbg_zone_data = pd.read_csv('../external_datasets/cbgs_zone_data.csv')
 # function to fill in zone data for each image 
 def fill_in_zone_data(d, zone_data):
     
@@ -300,8 +300,6 @@ bounds = {
     'Estimate_Total_Not_Hispanic_or_Latino_Asian_alone': (0,10000000),
     'Estimate_Total_Hispanic_or_Latino': (0,10000000),
     'Estimate_Total_Not_Hispanic_or_Latino': (0,10000000),
-    'Estimate_Total_Not_Hispanic_or_Latino_American_Indian_and_Alaska_Native_alone': (0,10000000),
-    'Estimate_Total_Not_Hispanic_or_Latino_Native_Hawaiian_and_Other_Pacific_Islander_alone': (0,10000000),
     'time_and_date_of_image': (datetime.datetime(2020,3,1,0,0,0,tzinfo=ZoneInfo('US/Eastern')), datetime.datetime(2020,11,16,0,0,0, tzinfo=ZoneInfo('US/Eastern'))),
     'hour': (0,23),
     'day_of_week': (0,6),
@@ -368,7 +366,7 @@ tgdf = tgdf.to_crs(PROJ_CRS)
 # In[19]:
 
 
-nyc_ntas = gpd.read_file("/share/pierson/nexar_data/5_other_datasets/nynta2020_22c")
+nyc_ntas = gpd.read_file("../external_datasets/nynta2020_22c")
 nyc_ntas = nyc_ntas.to_crs(PROJ_CRS)
 
 
@@ -383,7 +381,7 @@ nyc_ntas.plot()
 # In[21]:
 
 
-ny_cbgs = gpd.read_file('/share/pierson/nexar_data/5_other_datasets/tl_2020_36_all/tl_2020_36_bg20.shp')
+ny_cbgs = gpd.read_file('../external_datasets/tl_2020_36_all/tl_2020_36_bg20.shp')
 ny_cbgs = ny_cbgs.to_crs(WGS)
 
 nyc_cbgs = ny_cbgs[ny_cbgs.COUNTYFP20.isin(NYC_COUNTY_CODES)]
@@ -399,7 +397,7 @@ nyc_cbgs.plot()
 
 
 # Zoning Tests 
-nyc_zoning = gpd.read_file("/share/pierson/nexar_data/5_other_datasets/nycgiszoningfeatures_202212shp")
+nyc_zoning = gpd.read_file("../external_datasets/nycgiszoningfeatures_202212shp")
 nyc_zoning = nyc_zoning.to_crs('EPSG:2263')
 def residential(z): 
     if 'R' in z:
@@ -438,7 +436,7 @@ nyc_zoning
 # In[23]:
 
 
-precincts = pd.read_csv("/share/pierson/nexar_data/5_other_datasets/nypd_precinct_locs.csv")
+precincts = pd.read_csv("../external_datasets/nypd_precinct_locs.csv")
 precincts_gdf = gpd.GeoDataFrame(precincts, geometry=gpd.points_from_xy(precincts.lng, precincts.lat), crs=WGS)
 precincts_gdf = precincts_gdf.to_crs(PROJ_CRS)
 
@@ -457,7 +455,7 @@ nybb = nybb.to_crs(PROJ_CRS)
 # In[25]:
 
 
-nyc_arrests = pd.read_csv("/share/pierson/nexar_data/5_other_datasets/NYPD_Arrests_Data__Historic_.csv")
+nyc_arrests = pd.read_csv("../external_datasets/NYPD_Arrests_Data__Historic_.csv")
 
 
 # In[26]:
