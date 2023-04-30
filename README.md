@@ -9,6 +9,7 @@ Code to reproduce results in "Detecting disparities in police deployments using 
 
 3. **Generating results for paper**. Figures and results can be reproduced by running `bootstrapped_plots.ipynb`. See below for details. 
 
+*For any issues with reproducing results, getting code to work, etc., please open a GitHub Issue.* 
 
 ## Public datasets we used as additional metadata for each dashcam image. 
 ### [NYPD Crime Data (*NYPD Complaint Data Historic*)](https://data.cityofnewyork.us/Public-Safety/NYPD-Complaint-Data-Historic/qgea-i56i)
