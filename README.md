@@ -6,9 +6,9 @@ Code to reproduce results in "Detecting disparities in police deployments using 
 1. **Virtual environment setup.** Our code is run within a conda environment, with all analysis performed on a Linux Ubuntu HPC resource. This environment can be reproduced by running `conda env create --prefix YOUR_PATH_HERE -- file fpp_policing_env.yml`. Once the environment has been set up successfully, activate it before running any code by running the command `conda activate YOUR_PATH_HERE`. 
 
 2. **Downloading data.** We plan to release three types of data from the project. See below for the release plan: 
-    - **Aggregated** bootstrapping results. These JSON files are the smallest filesize, and provide the ability to regenerate our paper's plots. 
-    - Textual metadata. This ~28GB CSV file contains a row for each image in our dashcam dataset, annotated with demographic, temporal, and geographic features that enable analysis. 
-    - Image data. We are coordinating with Cornell to figure out a hosting scheme for the raw image data, with clocks in at over 10 TB. If you are interested in acquiring this dataset, or a subset of the dataset, please reach out. 
+    - *Aggregated bootstrapping results.* These JSON files are the smallest filesize, and provide the ability to regenerate our paper's plots. 
+    - *Textual metadata.* This ~28GB CSV file contains a row for each image in our dashcam dataset, annotated with demographic, temporal, and geographic features that enable analysis. 
+    - *Raw image data.* We are coordinating with Cornell to figure out a hosting scheme for the raw image data, with clocks in at over 10 TB. If you are interested in acquiring this dataset, or a subset of the dataset, please reach out. 
 
 3. **Generating results for paper**. Figures and results can be reproduced by running `bootstrapped_plots.ipynb`. See below for details. 
 
