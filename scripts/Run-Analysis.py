@@ -18,16 +18,14 @@ import numpy as np
 from tqdm import tqdm
 from zoneinfo import ZoneInfo
 import statsmodels.api as sm
-from statsmodels.stats.weightstats import DescrStatsW
-from scipy.stats import pearsonr, spearmanr
 import datetime
 import matplotlib.pyplot as plt
 from matplotlib import rc
 import matplotlib
-from scipy.stats import bootstrap
 from tqdm.auto import tqdm
 tqdm.pandas()
 import seaborn as sns 
+from os import get_terminal_size
 
 
 # ## (Optional) Enable LaTeX font rendering 
@@ -43,16 +41,20 @@ rc('text.latex', preamble=r'\usepackage{amsmath} \usepackage[T1]{fontenc}')
 
 # ## Global Constants 
 
+TERMINAL_SIZE = get_terminal_size()
+def print_whole_screen_line(): 
+    print('-' * TERMINAL_SIZE.columns)
+
 # ### I/O Paths
 
 # In[4]:
 
 
-ANL_DATASET_PATH = "/share/pierson/nexar_data/nexar_yolov7/intermediate_notebooks/analysis_dataset.csv"
-FIRST_CHUNK_PATH = "/share/pierson/nexar_data/nypd-deployment-patterns/output/1603771200000.csv"
-VALSET_PATH = "/share/pierson/nexar_data/dashcam-analysis/final_model_metrics/valset_2.csv"
-TESTSET_PATH = "/share/pierson/nexar_data/nexar_yolov7/test_set.csv"
-PAPER_GIT_REPO_PATH = "/share/pierson/nexar_data/nypd-deployment-patterns/plots"
+ANL_DATASET_PATH = "../output/analysis_dataset.csv"
+FIRST_CHUNK_PATH = "../output/1603771200000.csv"
+VALSET_PATH = "../valset.csv"
+TESTSET_PATH = "../testset.csv"
+PAPER_GIT_REPO_PATH = "../plots"
 
 
 # ### Geographic 
@@ -70,7 +72,6 @@ NYC_COUNTY_CODES = ['005', '047', '061', '081', '085']
 # In[6]:
 
 
-BASE_CHUNKS_PATH = '/share/pierson/nexar_data/FINAL_CHUNKS/%i.csv'
 COLS_TO_DEDUPLICATE_ON = ['lat', 'lng', 'timestamp'] # columns to use to check for duplicates
 MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS = datetime.datetime(2020, 10, 5, 0, 0, 0, tzinfo=ZoneInfo('US/Eastern')) # don't use data before this data to analyze disparities / demographics
 POSITIVE_CLASSIFICATION_THRESHOLD = 0.770508 # threshold to define a positive prediction
@@ -83,8 +84,6 @@ HISPANIC_POPULATION_COL = 'Estimate_Total_Hispanic_or_Latino'
 POPULATION_COUNT_COLS = [WHITE_POPULATION_COL, BLACK_POPULATION_COL, ASIAN_POPULATION_COL, HISPANIC_POPULATION_COL, TOTAL_POPULATION_COL]
 TIME_AND_DATE_COL = 'time_and_date_of_image'
 DEMOGRAPHIC_COLS = ['density_cbg', # things we want to look at correlations with. Demographic cols may not be best name. 
-                    'black_frac',
-                    'white_frac', 
                     'distance_from_nearest_crime_6hr',
                     'distance_from_nearest_police_station',
                     'median_household_income']
@@ -98,18 +97,25 @@ NEIGHBORHOOD_COL = 'ntaname'
 
 # In[7]:
 
-# function to load in dataset from CSV, with three options: (1) load chunk by chunk, (2) load with pyarrow, (3) load only first chunk
+# function to load dataset from CSV on disk, with three options: (1) in chunks, (2) load first chunk, (3) load at once with pyarrow 
+def load_analysis_dataset(load_in_chunks=False, load_first_chunk=False, use_pyarrow=False):
+    if load_in_chunks:
+        print("Loading data in chunks...")
+        d = pd.concat([chunk for chunk in tqdm(pd.read_csv(ANL_DATASET_PATH, chunksize=100000), total=221, desc='Loading data')])
+    elif load_first_chunk:
+        print("Loading first chunk...")
+        d = pd.concat([chunk for chunk in tqdm(pd.read_csv(FIRST_CHUNK_PATH, chunksize=100000), total=5, desc='Loading data')])
+    elif use_pyarrow:
+        print("Loading data with pyarrow...")
+        d = pd.read_csv(ANL_DATASET_PATH, engine='pyarrow')
+    else:
+        print("Loading data...")
+        d = pd.read_csv(ANL_DATASET_PATH)
+    return d
 
 
-
-# Load in annotated dataset from disk 
-#d = pd.concat([chunk for chunk in tqdm(pd.read_csv(ANL_DATASET_PATH, chunksize=100000), total=221, desc='Loading data')])
-# Variant: no progress bar, use faster pyarrow engine
-#d = pd.read_csv(ANL_DATASET_PATH, engine='pyarrow')
-
-# ALT. Only load first chunk. 
-d = pd.concat([chunk for chunk in tqdm(pd.read_csv(FIRST_CHUNK_PATH, chunksize=100000), total=5, desc='Loading data')])
-
+d = load_analysis_dataset(load_first_chunk=True)
+print_whole_screen_line()
 
 
 # In[8]:
@@ -122,27 +128,34 @@ d.head()
 
 # In[9]:
 
+# function to convert specified datetime column to datetime type and convert to EST timezone
+def convert_datetime_column_to_est(d, datetime_col):
+    d[datetime_col] = pd.to_datetime(d[datetime_col])
+    d[datetime_col] = d[datetime_col].dt.tz_convert('US/Eastern')
+    return d
 
-# Convert dt column to EST timezone 
-d.time_and_date_of_image = pd.to_datetime(d.time_and_date_of_image)
-d.time_and_date_of_image = d.time_and_date_of_image.dt.tz_convert('US/Eastern')
-print("Descriptive stats for datetimes in dataset.")
-print(d.time_and_date_of_image.describe(datetime_is_numeric=True))
-print('─' * 50)
+d = convert_datetime_column_to_est(d, TIME_AND_DATE_COL)
 
 
-# Inspect columns 
-print("Columns in d: ")
-pprint(list(d.columns.values), width=120, compact=True)
+# function to inspect columns of dataframe 
+def inspect_columns(d):
+    print("Columns in d: ")
+    pprint(list(d.columns.values), width=120, compact=True)
 
+inspect_columns(d)
+print_whole_screen_line()
 
 # In[10]:
 
+# function to remove duplicates from dataset bsaed on specific columns 
+def remove_duplicates(d, cols_to_deduplicate_on):
+    duplicate_idxs = d.duplicated(subset=cols_to_deduplicate_on)
+    print("warning: %i duplicates identified using %s, fraction %2.6f of rows; dropping rows" % (duplicate_idxs.sum(), cols_to_deduplicate_on, duplicate_idxs.mean()))
+    d = d.loc[~duplicate_idxs].copy()
+    return d
 
-# Remove duplicates. 
-duplicate_idxs = d.duplicated(subset=COLS_TO_DEDUPLICATE_ON)
-print("warning: %i duplicates identified using %s, fraction %2.6f of rows; dropping rows" % (duplicate_idxs.sum(), COLS_TO_DEDUPLICATE_ON, duplicate_idxs.mean()))
-d = d.loc[~duplicate_idxs].copy()
+d = remove_duplicates(d, COLS_TO_DEDUPLICATE_ON)
+print_whole_screen_line()
 
 def household_income_map(x):
     if x == '-' or x == '':
@@ -153,156 +166,148 @@ def household_income_map(x):
         return 2500
     return float(x)
 
+# function to add median household income column to dataset, with custom map
+def add_median_household_income_column(d, map):
+    d['median_household_income'] = d['median_household_income'].map(map)
+    return d
+
+d = add_median_household_income_column(d, household_income_map)
+
+# function to add race population fraction columns to dataset
+def add_race_frac_columns(d, population_cols): 
+    for col in population_cols:
+        d[col+'_frac'] = d[col] / d[TOTAL_POPULATION_COL]
+        assert d[col+'_frac'].dropna().max() <= 1
+        assert d[col+'_frac'].dropna().min() >= 0
+        DEMOGRAPHIC_COLS.append(col+'_frac')
+    return d
+
+d = add_race_frac_columns(d, POPULATION_COUNT_COLS)
+
+
+
+
 d['GeoID'] = d['GeoID'].astype(str)
 
-# define Census variables
-d['median_household_income'] = d['median_household_income'].map(household_income_map)
-d['white_frac'] = d[WHITE_POPULATION_COL] / d[TOTAL_POPULATION_COL]
-d['black_frac'] = d[BLACK_POPULATION_COL] / d[TOTAL_POPULATION_COL]
-assert d['white_frac'].dropna().max() <= 1
-assert d['white_frac'].dropna().min() >= 0
-assert d['black_frac'].dropna().max() <= 1
-assert d['black_frac'].dropna().min() >= 0
 
-# define time variables
-#d['date'] = d[TIME_AND_DATE_COL].map(lambda x:datetime.datetime.strptime(x.split()[0], '%Y-%m-%d'))
-d['date'] = d[TIME_AND_DATE_COL].dt.date
-locations_by_date = d.groupby('date')[LOCATION_COL_TO_GROUP_ON].nunique()
-print('unique locations by', locations_by_date)
 
-# filter for dates with full coverage. 
-print("In demographic analysis, filtering for locations after %s because more geographically representative" % MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS)
-d_for_demo_analysis = d.loc[d['phase'] == 1].copy()
-print("%i/%i rows remaining" % (len(d_for_demo_analysis), len(d)))
+# function to add date column to dataset 
+def add_date_column(d, datetime_col):
+    d['date'] = d[datetime_col].dt.date
+    return d
+
+d = add_date_column(d, TIME_AND_DATE_COL)
+
+# function to print unique locations by date 
+def print_unique_locations_by_date(d, location_col_to_group_on):
+    locations_by_date = d.groupby('date')[location_col_to_group_on].nunique()
+    print('unique locations by', locations_by_date)
+
+print_unique_locations_by_date(d, LOCATION_COL_TO_GROUP_ON)
+print_whole_screen_line()
+
+# function to filter dataset for dates with full coverage 
+def filter_for_dates_with_full_coverage(d, min_date_for_full_coverage):
+    len_before_filter = len(d.index)
+    print("In demographic analysis, filtering for locations after %s because more geographically representative" % MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS)
+    d = d.loc[d['time_and_date_of_image'] >= min_date_for_full_coverage].copy()
+    print("%i/%i rows remaining" % (len(d), len_before_filter))
+    return d
+
+d = filter_for_dates_with_full_coverage(d, MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS)
+print_whole_screen_line()
 
 
 
 # In[11]:
 
+# function to fill in NA data in specified columns 
+def fill_na_data(d, cols_to_fill_na):
+    for col in cols_to_fill_na:
+        d[col].fillna(0, inplace=True)
+    return d
 
-# FILLING IN NA DATA 
-d.conf.fillna(0, inplace=True)
 
-d.distance_from_nearest_police_station.fillna(0, inplace=True)
-d.distance_from_nearest_crime_1hr.fillna(0,inplace=True)
-d.distance_from_nearest_crime_3hr.fillna(0,inplace=True)
-d.distance_from_nearest_crime_6hr.fillna(0,inplace=True)
+COLS_TO_FILL_NA = ['conf', 'distance_from_nearest_police_station', 'distance_from_nearest_crime_1hr', 'distance_from_nearest_crime_3hr', 'distance_from_nearest_crime_6hr', 'density_cbg', 'Estimate_Total', 'Estimate_Total_Not_Hispanic_or_Latino_White_alone', 'Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone', 'Estimate_Total_Not_Hispanic_or_Latino_Asian_alone', 'Estimate_Total_Hispanic_or_Latino', 'Estimate_Total_Not_Hispanic_or_Latino']
+d = fill_na_data(d, COLS_TO_FILL_NA)
 
-d.density_cbg.fillna(0, inplace=True)
-d["Estimate_Total"].fillna(0, inplace=True)
-d["Estimate_Total_Not_Hispanic_or_Latino_White_alone"].fillna(0, inplace=True)
-d["Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone"].fillna(0,inplace=True)
-d["Estimate_Total_Not_Hispanic_or_Latino_Asian_alone"].fillna(0, inplace=True)
-d["Estimate_Total_Hispanic_or_Latino"].fillna(0,inplace=True)
 
 
 # ### Sanity Checks
 
 # In[12]:
 
+# function to check that all lat/long coordinates are in range
+def check_lat_long_in_range(d, lng_bounds, lat_bounds):
+    lng_in_range = ((d.lng > lng_bounds[0]) & (d.lng < lng_bounds[1]))
+    print(f"{sum(lng_in_range)} / {len(d.index)} have in range longitudes.")
+    lat_in_range = ((d.lat > lat_bounds[0]) & (d.lat < lat_bounds[1]))
+    print(f"{sum(lat_in_range)} / {len(d.index)} have in range latitudes.")
+    assert lng_in_range.all()
+    assert lat_in_range.all()
 
 # Check that all lng/lat coordinates are in range 
 LNG_BOUNDS = (-78,-73)
 LAT_BOUNDS = (40, 45)
 
-lng_in_range = ((d.lng > LNG_BOUNDS[0]) & (d.lng < LNG_BOUNDS[1]))
-print(f"{sum(lng_in_range)} / {len(d.index)} have in range longitudes.")
-lat_in_range = ((d.lat > LAT_BOUNDS[0]) & (d.lat < LAT_BOUNDS[1]))
-print(f"{sum(lat_in_range)} / {len(d.index)} have in range latitudes.")
-
-assert lng_in_range.all()
-assert lat_in_range.all()
-
+check_lat_long_in_range(d, LNG_BOUNDS, LAT_BOUNDS)
+print_whole_screen_line()
 
 # In[13]:
+
+# function to print out columns with more than specified percent missing
+def print_columns_with_more_than_threshold_missing(d, na_threshold):
+    print(f"Dataset columns with > {na_threshold} proportion of missing images.")
+    pprint(d.loc[:, d.isnull().mean() > na_threshold].isnull().mean())
 
 
 # Missing data -- set threshold, print out columns with more than this percent missing 
 NA_THRESHOLD = 0.025
-print(f"Dataset columns with > {NA_THRESHOLD} proportion of missing images.")
-pprint(d.loc[:, d.isnull().mean() > NA_THRESHOLD].isnull().mean())
+
+print_columns_with_more_than_threshold_missing(d, NA_THRESHOLD)
+print_whole_screen_line()
+
 
 
 # In[14]:
 
 
-# Checking that all core analysis columns fall within sensible value ranges 
-CONF_BOUNDS = (0,1)
+# reformat all variables below into one dictionary 
+# key: column name
+# value: tuple of (lower bound, upper bound)
+bounds = {
+    'conf': (0,1),
+    'distance_from_nearest_police_station': (0,50000),
+    'distance_from_nearest_crime_1hr': (0,500000),
+    'distance_from_nearest_crime_3hr': (0,500000),
+    'distance_from_nearest_crime_6hr': (0,500000),
+    'density_cbg': (0,10000000),
+    'Estimate_Total': (0,10000000),
+    'Estimate_Total_Not_Hispanic_or_Latino_White_alone': (0,10000000),
+    'Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone': (0,10000000),
+    'Estimate_Total_Not_Hispanic_or_Latino_Asian_alone': (0,10000000),
+    'Estimate_Total_Hispanic_or_Latino': (0,10000000),
+    'Estimate_Total_Not_Hispanic_or_Latino': (0,10000000),
+    'time_and_date_of_image': (datetime.datetime(2020,3,1,0,0,0,tzinfo=ZoneInfo('US/Eastern')), datetime.datetime(2020,11,16,0,0,0,tzinfo=ZoneInfo('US/Eastern'))),
+    'hour': (0,23),
+    'day_of_week': (0,6),
+    'month': (1,12),
+    'day_of_month': (1,31),
+    'weekend': (0,1),
+    'nighttime': (0,1),
+}
 
-NTANAMES_LENGTH = 195 
-DISTANCE_FROM_NEAREST_POLICE_STATION_BOUNDS=(0,50000)
-DISTANCE_FROM_NEAREST_CRIME_BOUNDS=(0,500000)
-MEDIAN_HOUSEHOLD_INCOME_BOUNDS=(0,100000000)
-ESTIMATE_WHITE_BOUNDS = (0, 10000000)
-ESTIMATE_BLACK_BOUNDS = (0, 10000000)
-ESTIMATE_ASIAN_BOUNDS = (0, 10000000)
-ESTIMATE_HISPANIC_BOUNDS = (0, 10000000)
-DENSITY_BOUNDS = (0,10000000)
-TIME_AND_DATE_OF_IMAGE_BOUNDS = (datetime.datetime(2020,3,1,0,0,0,tzinfo=ZoneInfo('US/Eastern')), datetime.datetime(2020,11,17,0,0,0,tzinfo=ZoneInfo('US/Eastern')))
-HOUR_BOUNDS = (0,23)
-DAY_OF_WEEK_BOUNDS = (0,6)
-DAY_OF_MONTH_BOUNDS = (1,31)
-WEEKEND_BOUNDS = (0,1)
-NIGHTTIME_BOUNDS = (0,1)
+# function to check that all values in specified columns are in range
+def check_values_in_range(d, bounds):
+    for col, (lower, upper) in bounds.items():
+        in_range = ((d[col] >= lower) & (d[col] <= upper))
+        print(f"{sum(in_range)} / {len(d.index)} have in range {col}.")
+        assert in_range.all()
 
-# Model features
-assert (d.conf >= CONF_BOUNDS[0]).all()
-assert (d.conf < CONF_BOUNDS[1]).all()
 
-# Demographic features 
-#assert d.median_household_income > MEDIAN_HOUSEHOLD_INCOME_BOUNDS[0]
-#assert d.median_household_income < MEDIAN_HOUSEHOLD_INCOME_BOUNDS[1]
+check_values_in_range(d, bounds)
+print_whole_screen_line()
 
-assert (d.density_cbg >= DENSITY_BOUNDS[0]).all()
-assert (d.density_cbg <= DENSITY_BOUNDS[1]).all()
-
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_White_alone"] >= ESTIMATE_WHITE_BOUNDS[0]).all()
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_White_alone"] <= ESTIMATE_WHITE_BOUNDS[1]).all()
-
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone"] >= ESTIMATE_BLACK_BOUNDS[0]).all()
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone"] <= ESTIMATE_BLACK_BOUNDS[1]).all()
-
-#d["Estimate_Total_Not_Hispanic_or_Latino_Asian_alone"]
-
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_Asian_alone"] >= ESTIMATE_ASIAN_BOUNDS[0]).all()
-assert (d["Estimate_Total_Not_Hispanic_or_Latino_Asian_alone"] <= ESTIMATE_ASIAN_BOUNDS[1]).all()
-
-assert (d["Estimate_Total_Hispanic_or_Latino"] >= ESTIMATE_HISPANIC_BOUNDS[0]).all()
-assert (d["Estimate_Total_Hispanic_or_Latino"] <= ESTIMATE_HISPANIC_BOUNDS[1]).all()
-
-# Distance features 
-assert (d.distance_from_nearest_police_station >= DISTANCE_FROM_NEAREST_POLICE_STATION_BOUNDS[0]).all()
-assert (d.distance_from_nearest_police_station <= DISTANCE_FROM_NEAREST_POLICE_STATION_BOUNDS[1]).all()
-
-assert (d.distance_from_nearest_crime_1hr >= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[0]).all()
-assert (d.distance_from_nearest_crime_1hr <= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[1]).all()
-
-assert (d.distance_from_nearest_crime_3hr >= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[0]).all()
-assert (d.distance_from_nearest_crime_3hr <= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[1]).all()
-
-assert (d.distance_from_nearest_crime_6hr >= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[0]).all()
-assert (d.distance_from_nearest_crime_6hr <= DISTANCE_FROM_NEAREST_CRIME_BOUNDS[1]).all()
-
-# Temporal features 
-assert (d.time_and_date_of_image >= TIME_AND_DATE_OF_IMAGE_BOUNDS[0]).all()
-assert (d.time_and_date_of_image <= TIME_AND_DATE_OF_IMAGE_BOUNDS[1]).all()
-
-assert (d.hour >= HOUR_BOUNDS[0]).all()
-assert (d.hour <= HOUR_BOUNDS[1]).all()
-
-assert (d.day_of_week >= DAY_OF_WEEK_BOUNDS[0]).all()
-assert (d.day_of_week <= DAY_OF_WEEK_BOUNDS[1]).all()
-
-assert (d.day_of_month >= DAY_OF_MONTH_BOUNDS[0]).all()
-assert (d.day_of_month <= DAY_OF_MONTH_BOUNDS[1]).all()
-
-assert (d.weekend >= WEEKEND_BOUNDS[0]).all()
-assert (d.weekend <= WEEKEND_BOUNDS[1]).all()
-
-assert (d.nighttime >= NIGHTTIME_BOUNDS[0]).all()
-assert (d.nighttime <= NIGHTTIME_BOUNDS[1]).all()
-
-print("We are sane! The dataset makes sense.")
 
 
 # In[15]:
@@ -312,8 +317,13 @@ core_anl_vars = ['distance_from_nearest_police_station','distance_from_nearest_c
                  'Estimate_Total_Not_Hispanic_or_Latino_White_alone', 'Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone','ntaname','time_and_date_of_image','hour','month','nighttime','day_of_month','day_of_week',
                 'density_cbg','median_household_income','boroct2020']
 
-core_anl_check = d[core_anl_vars]
-core_anl_check.describe(datetime_is_numeric=True).apply(lambda s: s.apply('{0:.2f}'.format))
+
+# function to describe specific columns in dataset 
+def describe_columns(d, cols):
+    return d[cols].describe(datetime_is_numeric=True).apply(lambda s: s.apply('{0:.2f}'.format))
+
+describe_columns(d, core_anl_vars)
+print_whole_screen_line()
 
 
 # ## 2. Loading in Validation & Test Sets, External Datasets
@@ -510,10 +520,6 @@ def convert_rows_to_cd(nyc_ancestry):
             borough = match.group(1)
             district_numbers_str = match.group(2)
             district_numbers = re.findall(r'\d+', district_numbers_str)
-            print(f"Borough: {boro_codes[borough]}")
-            print(f"District numbers: {district_numbers}")
-            
-            print(f"{boro_codes[borough]}{district_numbers[0].zfill(2)}")
             
             for n in district_numbers:
                 cdnum = f"{boro_codes[borough]}{n.zfill(2)}"
@@ -521,7 +527,7 @@ def convert_rows_to_cd(nyc_ancestry):
             
             
         else:
-            print("No match found.")
+            pass
             
             
     return mapping
@@ -619,6 +625,7 @@ def calibrate_probabilities_using_valset(v, d_to_add_prediction_columns_to):
     return d_to_add_prediction_columns_to
     
 d_for_demo_analysis = calibrate_probabilities_using_valset(v=v, d_to_add_prediction_columns_to=d)
+print_whole_screen_line()
 
 
 # PUT DGDF HERE 
@@ -626,11 +633,6 @@ d_for_demo_analysis = calibrate_probabilities_using_valset(v=v, d_to_add_predict
 d_for_demo_analysis = gpd.GeoDataFrame(d_for_demo_analysis, geometry=gpd.points_from_xy(d_for_demo_analysis.lng, d_for_demo_analysis.lat), crs=WGS)
 d_for_demo_analysis = d_for_demo_analysis.to_crs(PROJ_CRS)
 
-
-# In[30]:
-
-
-list(d_for_demo_analysis.columns)
 
 
 # ### Geographic Aggregation 
@@ -671,6 +673,7 @@ print("excluding census areas with population < %i keeps fraction %2.3f of popul
 for col in POPULATION_COUNT_COLS: # sanity check that total counts look right. 
     print("summed values of %s: %i" % (col, grouped_d[col].sum()))
     
+print_whole_screen_line()
 
 
 # In[33]:
@@ -702,6 +705,7 @@ for prediction_col in PREDICTION_COLS:
         estimates[demo_col] = grouped_mean
     print("Ratio of Black estimate to white estimate: %2.3f" % (estimates[BLACK_POPULATION_COL]/estimates[WHITE_POPULATION_COL]))
 
+print_whole_screen_line()
 
 # ## 4. Analysis Plots 
 
@@ -715,7 +719,7 @@ pearson_corr = grouped_d.loc[grouped_d[TOTAL_POPULATION_COL] > MIN_POPULATION_IN
 mask = np.triu(np.ones_like(pearson_corr, dtype=bool))
 heatmap = sns.heatmap(pearson_corr, mask=mask, vmin=-1, vmax=1, annot=True, cmap='BrBG')
 heatmap.set_title('Pearson Correlations', fontdict={'fontsize':18}, pad=16);
-
+plt.savefig(f"{PAPER_GIT_REPO_PATH}/pearson_correlations.png")
 
 # In[37]:
 
@@ -725,7 +729,7 @@ spearman_corr = grouped_d.loc[grouped_d[TOTAL_POPULATION_COL] > MIN_POPULATION_I
 mask = np.triu(np.ones_like(spearman_corr, dtype=bool))
 heatmap = sns.heatmap(spearman_corr, mask=mask, vmin=-1, vmax=1, annot=True, cmap='BrBG')
 heatmap.set_title('Spearman Correlations', fontdict={'fontsize':18}, pad=16);
-
+plt.savefig(f"{PAPER_GIT_REPO_PATH}/spearman_correlations.png")
 
 # ### Breakdown by Neighborhood 
 
@@ -740,6 +744,7 @@ for col in PREDICTION_COLS:
           .reset_index()
           .sort_values(by='mean')[::-1])
 nta_breakdown = d_for_demo_analysis.groupby(NEIGHBORHOOD_COL)['calibrated_prediction'].agg(['mean', 'size']).reset_index().sort_values(by='mean')[::-1]
+print_whole_screen_line()
 
 
 # ## Map of Pr(police) by Census area (either neighborhood or Census tract). Can show this next to maps of density and potentially other variables - we decided to make this by neighborhood for a number of reasons. 
@@ -849,10 +854,6 @@ nybb.plot(ax=ax, edgecolor='grey', color='w')
 nyc_ntas_proj_demo.plot(column=nyc_ntas_proj_demo.calibrated_prediction_decile, ax=ax, cmap='cividis', legend=True, legend_kwds={'title':'Calibrated Probability of Police Exposure'})
 
 
-#nyc_ntas.plot(color='blue', ax=ax)
-
-#nyc_ntas.merge(nta_grouped_d, left_on='NTAName', right_on='ntaname').fillna(0).plot(column='calibrated_prediction', ax=ax, cmap='plasma', legend=True, legend_kwds={"location": "bottom", "shrink": 0.5, "pad": 0, 'label': 'Calibrated Probability of Police Exposure'})
-
 
 
 
@@ -882,7 +883,7 @@ nyc_cbgs_proj_demo.plot(column=nyc_cbgs_proj_demo.calibrated_prediction_decile, 
 
 plt.axis('off')
 
-plt.savefig('PR_police_by_cbg.jpg', dpi=450)
+plt.savefig(f'{PAPER_GIT_REPO_PATH}/PR_police_by_cbg.jpg', dpi=450)
 
 
 # ### Table of neighborhoods with highest police levels  (include borough as a column as well assuming that each neighborhood is only in one borough). 
@@ -1055,17 +1056,11 @@ pr_by_zone
 def population_weighting(metric_to_weight, weights):
     return (metric_to_weight * weights).sum() / weights.sum()
 
-#r_pr = ((residential_grouped_d.calibrated_prediction * residential_grouped_d['Estimate_Total:'])).sum() / r_pop
-#c_pr = (commercial_grouped_d.calibrated_prediction * (commercial_grouped_d['Estimate_Total:'] / c_pop)).mean()
-#m_pr = (manufacturing_grouped_d.calibrated_prediction * (manufacturing_grouped_d['Estimate_Total:'] / m_pop)).mean()
 
 r_pr = population_weighting(residential_grouped_d.calibrated_prediction, residential_grouped_d['Estimate_Total'])
 c_pr = population_weighting(commercial_grouped_d.calibrated_prediction, commercial_grouped_d['Estimate_Total'])
 m_pr = population_weighting(manufacturing_grouped_d.calibrated_prediction, manufacturing_grouped_d['Estimate_Total'])
 
-#r_pr = residential_grouped_d.calibrated_prediction.mean()
-#c_pr = commercial_grouped_d.calibrated_prediction.mean()
-#m_pr = manufacturing_grouped_d.calibrated_prediction.mean()
 
 data = {'Residential': r_pr, 'Commercial': c_pr, 'Manufacturing': m_pr}
 print(data)
@@ -1111,6 +1106,7 @@ pr_by_race_table = pr_by_race_table['Weighted Probability of Police, Relative to
 
 pr_by_race_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/pr_by_race.tex', index=True, float_format="%.2f")    
 pr_by_race_table
+print_whole_screen_line()
 
 
 # ### Police levels by race (only residential zones)
@@ -1145,6 +1141,7 @@ pr_by_race_rzones_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/pr_by_race_resid
 
 
 pr_by_race_rzones_table
+print_whole_screen_line()
 
 
 # ### Arrest Rates Plot
@@ -1349,12 +1346,14 @@ t.loc[t['median_household_income'] == '2,500-', 'median_household_income']  = 25
 t.loc[t['median_household_income'] == '-', 'median_household_income'] = None
 t['median_household_income'] = t['median_household_income'].astype(float)
 t.describe()
+print_whole_screen_line()
 
 
 t['classified_positive'] = t.Model_predicted_score > 0.86 # what is our threshold for a positive classification
 print('p(Police | classified_positive): %2.3f (precision)' % t.loc[t['classified_positive'] == 1, 'ground_truth'].mean())
 print('p(Police | classified_negative): %2.3f (forget what this metric is called)' % t.loc[t['classified_positive'] == 0, 'ground_truth'].mean())
 print('p(classified_positive | police): %2.3f (recall)' % t.loc[t['ground_truth'] == 1, 'classified_positive'].mean())
+print_whole_screen_line()
 
 
 results=[]
