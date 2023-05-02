@@ -1,4 +1,4 @@
-name: null
+name: fpp_policing_env
 channels:
   - conda-forge
   - defaults
@@ -339,4 +339,4 @@ dependencies:
     - sip==6.7.6
     - statsmodels==0.13.5
     - tornado==6.2
-prefix: /share/pierson/conda_virtualenvs/fpp_geospatial
+
