@@ -1,0 +1,9 @@
+pprint
+pandas 
+matplotlib
+geopandas
+numpy
+tqdm
+seaborn
+astral
+scipy
