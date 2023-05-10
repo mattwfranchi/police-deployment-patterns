@@ -1,4 +1,3 @@
-pprint
 pandas 
 matplotlib
 geopandas
@@ -9,3 +8,4 @@ astral
 scipy
 openpyxl
 jupyter
+statsmodels

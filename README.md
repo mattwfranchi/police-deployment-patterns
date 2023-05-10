@@ -3,7 +3,7 @@
 Code to reproduce results in "Detecting disparities in police deployments using dashcam data" (2023) by Matt Franchi, J.D. Zamfirescu-Pereira, Wendy Ju, and Emma Pierson. To appear in ACM FAccT '23. 
 
 ## Reproducing results 
-1. **Virtual environment setup.** Our code is run within a conda environment, with all analysis performed on a Linux Ubuntu HPC resource. This environment can be reproduced by running `pip install -r core_packages.txt`, inside or outside a conda environment. 
+1. **Virtual environment setup.** Our code is run within a conda environment, with all analysis performed on a Linux Ubuntu HPC resource. This environment can be reproduced by running `pip install -r core_packages.txt`, inside or outside a conda environment; this environment was tested using python 3.11. 
 
 2. **Downloading data.** We plan to release three types of data from the project. See below for the release plan: 
     - *Aggregated bootstrapping results.* These JSON files are the smallest filesize, and provide the ability to regenerate our paper's plots. 
