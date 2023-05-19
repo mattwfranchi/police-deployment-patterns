@@ -9,4 +9,4 @@ scipy
 openpyxl
 jupyter
 statsmodels
-sklearn
+scikit-learn
