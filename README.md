@@ -1,5 +1,5 @@
 # Disparities in Police (NYPD) Deployment Patterns
-![Project Logo](police-presence.png)
+https://github.com/mattwfranchi/police-deployment-patterns/assets/59738610/5d20b786-f2b7-4f2d-8ca7-91d2469227db
 Code to reproduce results in "Detecting disparities in police deployments using dashcam data" (2023) by Matt Franchi, J.D. Zamfirescu-Pereira, Wendy Ju, and Emma Pierson. To appear in ACM FAccT '23. 
 
 ## Reproducing results 
@@ -59,3 +59,7 @@ To train our YOLOv7 object classifier, we utilized the following hardware:
 - 256GB RAM 
 
 This allowed us to use a batch size of 40. 
+
+
+
+
