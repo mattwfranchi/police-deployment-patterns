@@ -5,10 +5,10 @@ Code to reproduce results in "Detecting disparities in police deployments using 
 ## Reproducing results 
 1. **Virtual environment setup.** Our code is run within a conda environment, with all analysis performed on a Linux Ubuntu HPC resource. This environment can be reproduced by running `pip install -r core_packages.txt`, inside or outside a conda environment; this environment was tested using python 3.11. 
 
-2. **Downloading data.** We plan to release three types of data from the project. See below for the release plan: 
-    - *Aggregated bootstrapping results.* These JSON files are the smallest filesize, and provide the ability to regenerate our paper's plots. 
-    - *Textual metadata.* This ~28GB CSV file contains a row for each image in our dashcam dataset, annotated with demographic, temporal, and geographic features that enable analysis. 
-    - *Raw image data.* We are coordinating with Cornell to figure out a hosting scheme for the raw image data, with clocks in at over 10 TB. If you are interested in acquiring this dataset, or a subset of the dataset, please reach out. 
+2. **Downloading data.** We are hoping to release data from the project, pending approval from Nexar. See below for the release plan: 
+    - *Aggregated bootstrapping results.* These JSON files are the smallest filesize, and provide the ability to regenerate our paper's plots. (DONE)
+    - *Textual metadata.* This ~28GB CSV file contains a row for each image in our dashcam dataset, annotated with demographic, temporal, and geographic features that enable analysis. (WIP)
+    - *Raw image data.* We are coordinating with Cornell to figure out a hosting scheme for the raw image data, with clocks in at over 10 TB. If you are interested in acquiring this dataset, or a subset of the dataset, please reach out. (WIP)
 
 3. **Generating results for paper**. Figures and results can be reproduced by running `bootstrapped_plots.ipynb`. See below for details. 
 
