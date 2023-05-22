@@ -1,5 +1,6 @@
 # Disparities in Police (NYPD) Deployment Patterns
 https://github.com/mattwfranchi/police-deployment-patterns/assets/59738610/5d20b786-f2b7-4f2d-8ca7-91d2469227db
+
 Code to reproduce results in "Detecting disparities in police deployments using dashcam data" (2023) by Matt Franchi, J.D. Zamfirescu-Pereira, Wendy Ju, and Emma Pierson. To appear in ACM FAccT '23. 
 
 ## Reproducing results 
