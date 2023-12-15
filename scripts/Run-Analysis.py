@@ -25,8 +25,8 @@ import matplotlib
 from tqdm.auto import tqdm
 tqdm.pandas()
 import seaborn as sns 
-from os import get_terminal_size
-
+from os import get_terminal_size, terminal_size
+import json
 
 # ## (Optional) Enable LaTeX font rendering 
 
@@ -40,21 +40,34 @@ rc('text.latex', preamble=r'\usepackage{amsmath} \usepackage[T1]{fontenc}')
 
 
 # ## Global Constants 
+try:
+    TERMINAL_SIZE = get_terminal_size()
+    def print_whole_screen_line(): 
+        print('-' * TERMINAL_SIZE.columns)
+except Exception as e: 
+    print(e) 
+    def print_whole_screen_line(): 
+        print('-' * 80)
+    
 
-TERMINAL_SIZE = get_terminal_size()
-def print_whole_screen_line(): 
-    print('-' * TERMINAL_SIZE.columns)
+
+
 
 # ### I/O Paths
 
 # In[4]:
 
 
-ANL_DATASET_PATH = "../output/analysis_dataset.csv"
+ANL_DATASET_PATH = "../output/yesterday/analysis_dataset.csv"
 FIRST_CHUNK_PATH = "../output/1603771200000.csv"
 VALSET_PATH = "../valset.csv"
 TESTSET_PATH = "../testset.csv"
-PAPER_GIT_REPO_PATH = "../plots"
+PAPER_GIT_REPO_PATH = "../plots_reverified_1215_20bootstraps"
+
+# make figures, tables subdir in PAPER_GIT_REPO_PATH 
+import os
+os.makedirs(f"{PAPER_GIT_REPO_PATH}/figures", exist_ok=True)
+os.makedirs(f"{PAPER_GIT_REPO_PATH}/tables", exist_ok=True)
 
 
 # ### Geographic 
@@ -68,10 +81,6 @@ NYC_COUNTY_CODES = ['005', '047', '061', '081', '085']
 
 
 # ### Analysis Parameters 
-
-# In[6]:
-
-
 COLS_TO_DEDUPLICATE_ON = ['lat', 'lng', 'timestamp'] # columns to use to check for duplicates
 MIN_DATE_FOR_DEMOGRAPHIC_ANALYSIS = datetime.datetime(2020, 10, 5, 0, 0, 0, tzinfo=ZoneInfo('US/Eastern')) # don't use data before this data to analyze disparities / demographics
 POSITIVE_CLASSIFICATION_THRESHOLD = 0.770508 # threshold to define a positive prediction
@@ -91,11 +100,11 @@ PREDICTION_COLS = ['above_threshold', 'calibrated_prediction', 'prediction_adjus
 MIN_POPULATION_IN_AREA = 500
 BOROUGH_COL = 'boroname'
 NEIGHBORHOOD_COL = 'ntaname'
+N_BOOTSTRAPS = 20
+ZONE_THRESHOLD = 0.5
 
 
-# ## 1. Dataset Verification 
-
-# In[7]:
+# ## 1. Dataset Verification
 
 # function to load dataset from CSV on disk, with three options: (1) in chunks, (2) load first chunk, (3) load at once with pyarrow 
 def load_analysis_dataset(load_in_chunks=False, load_first_chunk=False, use_pyarrow=False):
@@ -114,11 +123,11 @@ def load_analysis_dataset(load_in_chunks=False, load_first_chunk=False, use_pyar
     return d
 
 
-d = load_analysis_dataset(load_first_chunk=True)
+d = load_analysis_dataset(load_first_chunk=False, use_pyarrow=True)
 print_whole_screen_line()
 
 
-# In[8]:
+
 
 
 d.head()
@@ -126,7 +135,7 @@ d.head()
 
 # ### Preprocessing
 
-# In[9]:
+
 
 # function to convert specified datetime column to datetime type and convert to EST timezone
 def convert_datetime_column_to_est(d, datetime_col):
@@ -145,9 +154,9 @@ def inspect_columns(d):
 inspect_columns(d)
 print_whole_screen_line()
 
-# In[10]:
+# 
 
-# function to remove duplicates from dataset bsaed on specific columns 
+# function to remove duplicates from dataset based on specific columns 
 def remove_duplicates(d, cols_to_deduplicate_on):
     duplicate_idxs = d.duplicated(subset=cols_to_deduplicate_on)
     print("warning: %i duplicates identified using %s, fraction %2.6f of rows; dropping rows" % (duplicate_idxs.sum(), cols_to_deduplicate_on, duplicate_idxs.mean()))
@@ -156,6 +165,21 @@ def remove_duplicates(d, cols_to_deduplicate_on):
 
 d = remove_duplicates(d, COLS_TO_DEDUPLICATE_ON)
 print_whole_screen_line()
+
+cbg_zone_data = pd.read_csv('/share/pierson/nexar_data/5_other_datasets/cbgs_zone_data.csv')
+assert (1.*(cbg_zone_data['C'] > ZONE_THRESHOLD) + 1.*(cbg_zone_data['M'] > ZONE_THRESHOLD) + 1.*(cbg_zone_data['R'] > ZONE_THRESHOLD)).max() == 1
+cbg_zone_dict = {}
+for zone_val in ['C', 'M', 'R']:
+    zones = cbg_zone_data.loc[cbg_zone_data[zone_val] >= ZONE_THRESHOLD]
+    print("%i CBGs classified as %s" % (len(zones), zone_val))
+    cbg_zone_dict.update(dict(zip(zones['GEOID20'].values, [zone_val for _ in range(len(zones))])))
+print(len(cbg_zone_dict))
+d['zone'] = d['GEOID20'].map(lambda x:cbg_zone_dict[x] if x in cbg_zone_dict else None)
+print("zone classification of images")
+print(d['zone'].value_counts(dropna=False))
+
+print_whole_screen_line()
+
 
 def household_income_map(x):
     if x == '-' or x == '':
@@ -219,12 +243,13 @@ print_whole_screen_line()
 
 
 
-# In[11]:
+# 
 
 # function to fill in NA data in specified columns 
 def fill_na_data(d, cols_to_fill_na):
     for col in cols_to_fill_na:
-        d[col].fillna(0, inplace=True)
+        if col in d.columns:
+            d[col].fillna(0, inplace=True)
     return d
 
 
@@ -235,7 +260,7 @@ d = fill_na_data(d, COLS_TO_FILL_NA)
 
 # ### Sanity Checks
 
-# In[12]:
+# 
 
 # function to check that all lat/long coordinates are in range
 def check_lat_long_in_range(d, lng_bounds, lat_bounds):
@@ -253,7 +278,7 @@ LAT_BOUNDS = (40, 45)
 check_lat_long_in_range(d, LNG_BOUNDS, LAT_BOUNDS)
 print_whole_screen_line()
 
-# In[13]:
+# 
 
 # function to print out columns with more than specified percent missing
 def print_columns_with_more_than_threshold_missing(d, na_threshold):
@@ -269,7 +294,7 @@ print_whole_screen_line()
 
 
 
-# In[14]:
+# 
 
 
 # reformat all variables below into one dictionary 
@@ -310,7 +335,7 @@ print_whole_screen_line()
 
 
 
-# In[15]:
+# 
 
 
 core_anl_vars = ['distance_from_nearest_police_station','distance_from_nearest_crime_1hr','distance_from_nearest_crime_3hr','distance_from_nearest_crime_6hr',
@@ -320,31 +345,36 @@ core_anl_vars = ['distance_from_nearest_police_station','distance_from_nearest_c
 
 # function to describe specific columns in dataset 
 def describe_columns(d, cols):
-    return d[cols].describe(datetime_is_numeric=True).apply(lambda s: s.apply('{0:.2f}'.format))
+    return d[cols].describe().apply(lambda s: s.apply('{0:.2f}'.format))
 
 describe_columns(d, core_anl_vars)
 print_whole_screen_line()
+
+def describe_d(d): 
+    return d.describe().apply(lambda s: s.apply('{0:.2f}'.format)).to_csv(f"{PAPER_GIT_REPO_PATH}/tables/describe_d.csv")
+
+describe_d(d)
 
 
 # ## 2. Loading in Validation & Test Sets, External Datasets
 
 # ### Validation, Test Sets 
 
-# In[16]:
+# 
 
 
 v = pd.read_csv(VALSET_PATH)
 t = pd.read_csv(TESTSET_PATH)
 
 
-# In[17]:
+# 
 
 
 vgdf = gpd.GeoDataFrame(v, geometry=gpd.points_from_xy(v.lng, v.lat), crs=WGS)
 vgdf = vgdf.to_crs(PROJ_CRS)
 
 
-# In[18]:
+# 
 
 
 tgdf = gpd.GeoDataFrame(t, geometry=gpd.points_from_xy(t.lng, t.lat), crs=WGS)
@@ -353,14 +383,14 @@ tgdf = tgdf.to_crs(PROJ_CRS)
 
 # ### NYC Neighborhood Tabulation Areas (NTAs) 
 
-# In[19]:
+# 
 
 
 nyc_ntas = gpd.read_file("/share/pierson/nexar_data/5_other_datasets/nynta2020_22c")
 nyc_ntas = nyc_ntas.to_crs(PROJ_CRS)
 
 
-# In[20]:
+# 
 
 
 nyc_ntas.plot()
@@ -368,7 +398,7 @@ nyc_ntas.plot()
 
 # ### NYC Census Block Groups (CBGs) 
 
-# In[21]:
+# 
 
 
 ny_cbgs = gpd.read_file('/share/pierson/nexar_data/5_other_datasets/tl_2020_36_all/tl_2020_36_bg20.shp')
@@ -383,7 +413,7 @@ nyc_cbgs.plot()
 
 # ### NYC Zoning Data 
 
-# In[22]:
+# 
 
 
 # Zoning Tests 
@@ -423,7 +453,7 @@ nyc_zoning
 
 # ### NYPD Precinct Locations 
 
-# In[23]:
+# 
 
 
 precincts = pd.read_csv("/share/pierson/nexar_data/5_other_datasets/nypd_precinct_locs.csv")
@@ -433,148 +463,18 @@ precincts_gdf = precincts_gdf.to_crs(PROJ_CRS)
 
 # ### NYC Borough Boundaries (NYBB) 
 
-# In[24]:
+# 
 
 
 nybb = gpd.read_file(gpd.datasets.get_path('nybb'))
 nybb = nybb.to_crs(PROJ_CRS)
 
 
-# ### NYC Arrests Data 
-
-# In[25]:
-
-
-nyc_arrests = pd.read_csv("/share/pierson/nexar_data/5_other_datasets/NYPD_Arrests_Data__Historic_.csv")
-
-
-# In[26]:
-
-
-nyc_arrests = gpd.GeoDataFrame(nyc_arrests, geometry=gpd.points_from_xy(nyc_arrests.Longitude, nyc_arrests.Latitude), crs=WGS)
-nyc_arrests = nyc_arrests.to_crs(PROJ_CRS)
-
-
-# In[27]:
-
-
-arrests_by_nta = gpd.sjoin(nyc_arrests,nyc_ntas).groupby('NTAName').agg('size').to_frame('num_arrests')
-
-
-# In[28]:
-
-
-nyc_ntas = nyc_ntas.merge(arrests_by_nta, left_on='NTAName', right_on='NTAName')
-
-
-# ### NYC Community Districts 
-
-# In[83]:
-
-
-nyc_cds = gpd.read_file("../external_datasets/nyc_cds.shp")
-nyc_cds
-
-
-# ### ACS PUMS Ancestry Dataset - NYC 2020 
-
-# In[77]:
-
-
-nyc_ancestry = pd.read_csv("../external_datasets/nyc_2020_pums_ancestry.csv", skiprows=4)
-
-
-# In[81]:
-
-
-nyc_ancestry
-
-
-# In[ ]:
-
-
-
-
-
-# In[156]:
-
-
-import re
-def convert_rows_to_cd(nyc_ancestry): 
-    boro_codes = {
-        "Manhattan": 1,
-        "Bronx": 2,
-        "Brooklyn": 3,
-        "Queens": 4,
-        "Staten Island": 5
-    }
-    
-    mapping = {}
-    
-    for idx, row in nyc_ancestry.iterrows(): 
-
-        pattern = r'^NYC-(\w+) Community District ((\d+)(\s*&\s*\d+)*)\s*--.*$'
-
-        match = re.match(pattern, row["Selected Geographies"])
-        if match:
-            borough = match.group(1)
-            district_numbers_str = match.group(2)
-            district_numbers = re.findall(r'\d+', district_numbers_str)
-            
-            for n in district_numbers:
-                cdnum = f"{boro_codes[borough]}{n.zfill(2)}"
-                mapping[cdnum] = row["Selected Geographies"]
-            
-            
-        else:
-            pass
-            
-            
-    return mapping
-
-
-# In[157]:
-
-
-nyc_cds_parsed = convert_rows_to_cd(nyc_ancestry)
-
-
-# In[171]:
-
-
-len(nyc_cds_parsed)
-
-
-# In[186]:
-
-
-nyc_cds_df = pd.Series(nyc_cds_parsed, name='Name').to_frame("Name")
-nyc_cds_df['cdnum'] = nyc_cds_df.index.astype(float)
-
-
-# In[187]:
-
-
-nyc_ancestry_parsed = nyc_cds_df.merge(nyc_ancestry, how='left', left_on='Name', right_on='Selected Geographies')
-
-
-# In[ ]:
-
-
-nyc_ancestry_plottable = nyc_cds.merge(nyc_ancestry_parsed, how='left', left_on='boro_cd', right_on='cdnum')
-
-
-# In[ ]:
-
-
-nyc_ancestry_plottable.plot()
-
-
 # ## 3. NYPD Deployment Analysis 
 
 # ### Computing Probability Measures with Validation Set 
 
-# In[29]:
+# 
 
 
 def calibrate_probabilities_using_valset(v, d_to_add_prediction_columns_to):
@@ -592,6 +492,9 @@ def calibrate_probabilities_using_valset(v, d_to_add_prediction_columns_to):
     assert v['Model_predicted_score'].isnull().sum() == 0
     v['classified_positive'] = v['Model_predicted_score'] > POSITIVE_CLASSIFICATION_THRESHOLD
     d_to_add_prediction_columns_to['above_threshold'] = (d_to_add_prediction_columns_to['conf'] > POSITIVE_CLASSIFICATION_THRESHOLD) * 1.
+
+    # print the number of images > threshold 
+    print("Number of images above threshold: %i" % (d_to_add_prediction_columns_to['above_threshold'].sum()))
     
     # 2. compute probabilities given above/below threshold from val set
     p_positive_given_classified_positive = v.loc[v['classified_positive'] == True, 'ground_truth'].mean()
@@ -637,7 +540,7 @@ d_for_demo_analysis = d_for_demo_analysis.to_crs(PROJ_CRS)
 
 # ### Geographic Aggregation 
 
-# In[31]:
+# 
 
 
 pop_by_nta = d_for_demo_analysis.groupby(['ntaname','NAME'])[POPULATION_COUNT_COLS + 
@@ -652,7 +555,7 @@ nta_grouped_d = pop_by_nta.join(est_by_nta)
 nta_grouped_d = (nta_grouped_d, )
 
 
-# In[32]:
+# 
 
 
 # group by Census area. 
@@ -676,21 +579,188 @@ for col in POPULATION_COUNT_COLS: # sanity check that total counts look right.
 print_whole_screen_line()
 
 
-# In[33]:
-
-
-grouped_d.calibrated_prediction
-
-
-# In[34]:
-
-
-len(nyc_cbgs.index)
-
-
 # ### Disparities Estimator 
+def weighted_disparities_estimator(df, census_area_col, weighting_cols, total_population_col, estimate_col, check_consistent_vals_by_group):
+    """
+    Given a census dataframe
+    group by census_area_col and compute the mean value of estimate_col in each census area
+    then return weighted means across Census areas, 
+    weighting each Census area by all the columns in weighting_cols and total_population_col. 
+    We use this for computations of race-specific results. 
+    Emma reviewed. 
+    """
+    grouped_d = df.groupby(census_area_col)[weighting_cols + [total_population_col, estimate_col]].mean().reset_index()
+    if check_consistent_vals_by_group: # sanity check to make sure that values are consistent
+        consistency_df = df.groupby(census_area_col)[weighting_cols + [total_population_col]].nunique()
+        assert (consistency_df.values == 1).all()
+        assert df[weighting_cols + [total_population_col, estimate_col]].isnull().values.sum() == 0
+    results = {}
+    for col in weighting_cols + [total_population_col]:
+        results['%s_weighted_mean' % col] = (grouped_d[estimate_col] * grouped_d[col]).sum()/grouped_d[col].sum()
+    for col in weighting_cols:
+        results['%s_relative_to_average' % col] = results['%s_weighted_mean' % col]/results['%s_weighted_mean' % total_population_col]
+    return results
 
-# In[35]:
+def weighted_disparities_estimator_two_level_grouping(df, census_area_col, high_level_group_col, total_population_col, estimate_col, check_consistent_vals_by_group):
+    """
+    This function is similar to that above, but is (hopefully) a faster way to compute 
+    two-level groupings (e.g., we want to compute borough-specific numbers, and weight by Census tract population within borough). 
+    high_level_group col specifies the column we want to compute disparities over (e.g. borough). 
+    All other columns are as explained above. 
+    Verified that this gives identical results to function above for borough, zone, etc. 
+    """
+    if check_consistent_vals_by_group: # sanity check to make sure that values are consistent
+        consistency_df = df.groupby(census_area_col)[high_level_group_col].nunique()
+        assert ((consistency_df.values == 1) | (consistency_df.values == 0)).all()
+    results = {}
+    # first compute overall mean. 
+    overall_mean_grouping = df.groupby(census_area_col)[[total_population_col, estimate_col]].mean().reset_index()
+    results['%s_weighted_mean' % total_population_col] = (overall_mean_grouping[estimate_col] * overall_mean_grouping[total_population_col]).sum()/overall_mean_grouping[total_population_col].sum()
+    high_level_grouping = df.groupby(high_level_group_col)
+    all_names = []
+    for name, group_df in high_level_grouping:
+        if group_df[total_population_col].sum() == 0:
+            print("Skipping %s because total population is 0" % name)
+            continue
+        all_names.append(name)
+        second_level_grouping = group_df.groupby(census_area_col)[[total_population_col, estimate_col]].mean().reset_index()
+        results['%s_weighted_mean' % name] = (second_level_grouping[estimate_col] * second_level_grouping[total_population_col]).sum()/second_level_grouping[total_population_col].sum()
+    for name in all_names:
+        results['%s_relative_to_average' % name] = results['%s_weighted_mean' % name]/results['%s_weighted_mean' % total_population_col]
+    return results
+
+def bootstrap_function_errorbars(df, fxn_to_apply, fxn_kwargs, n_bootstraps=100, filename=None):
+    # compute the point estimate fxn_to_apply(df) on the original data
+    # and then do bootstrap iterates. Emma reviewed. 
+    bootstrap_statistics = []
+    point_estimate = fxn_to_apply(df, check_consistent_vals_by_group=True, **fxn_kwargs)
+    for bootstrap in tqdm(range(n_bootstraps)):
+            bootstrap_df = df.sample(frac=1, replace=True)
+            bootstrap_statistics.append(fxn_to_apply(bootstrap_df, check_consistent_vals_by_group=False, **fxn_kwargs))
+    if filename is not None:
+        with open(f"{PAPER_GIT_REPO_PATH}/{filename}", 'w') as f:
+            json.dump({'point_estimate':point_estimate, 'bootstrap_statistics':bootstrap_statistics}, f)
+    return point_estimate, bootstrap_statistics
+
+# print out a table. Emma reviewed. 
+def create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics):
+    bootstrap_statistics = pd.DataFrame(bootstrap_statistics)
+    bootstrap_results_table = []
+    for k in bootstrap_point_estimate.keys():
+        lower_CI = np.percentile(bootstrap_statistics[k], 2.5)
+        upper_CI = np.percentile(bootstrap_statistics[k], 97.5)
+        bootstrap_results_table.append({'quantity':k, 
+                                        'estimate':bootstrap_point_estimate[k], 
+                                        #'bootstrap std':bootstrap_statistics[k].std(), 
+                                        #'2.5% percentile':lower_CI, 
+                                        #'97.5% percentile':upper_CI, 
+                                        'percentile CI':'%2.3f (%2.3f, %2.3f)' % (bootstrap_point_estimate[k], 
+                                                                                         lower_CI, 
+                                                                                         upper_CI), 
+                                       '1.96 sd CI':'%2.3f +/- %2.3f' % (bootstrap_point_estimate[k], 1.96 * bootstrap_statistics[k].std())})
+    bootstrap_results_table = pd.DataFrame(bootstrap_results_table)
+    return (bootstrap_results_table.loc[bootstrap_results_table['quantity'].map(lambda x:'relative_to_average' in x), 
+                                       ['quantity', 'estimate', 'percentile CI', '1.96 sd CI']].sort_values(by='estimate')[::-1])
+
+
+# race table (not conditioning on Zone). Emma reviewed. 
+# compute point estimate and errorbars
+bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(df=d_for_demo_analysis, 
+                             fxn_to_apply=weighted_disparities_estimator, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'weighting_cols':[WHITE_POPULATION_COL, BLACK_POPULATION_COL, HISPANIC_POPULATION_COL, ASIAN_POPULATION_COL], 
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='race_bootstraps.json')
+print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
+
+print_whole_screen_line()
+
+# race table CONDITIONING ON ZONE. Emma reviewed. 
+# compute point estimate and errorbars
+bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(
+    df=d_for_demo_analysis.loc[d_for_demo_analysis['zone'] == 'R'], 
+                             fxn_to_apply=weighted_disparities_estimator, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'weighting_cols':[WHITE_POPULATION_COL, BLACK_POPULATION_COL, HISPANIC_POPULATION_COL, ASIAN_POPULATION_COL], 
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='race_residential_zones_only_bootstraps.json')
+print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
+
+print_whole_screen_line()
+
+# continuous variables: divide into quartile. Emma reviewed. 
+
+# density_cbg, median_household_income
+
+for col in ['median_household_income', 'density_cbg']:
+    percentile_cutoffs = [25, 50, 75]
+    print("Fraction of missing values for %s: %2.6f" % (col, d_for_demo_analysis[col].isnull().mean()))
+    d_for_col = d_for_demo_analysis.dropna(subset=[col]).copy()
+    cutoff_vals = np.percentile(d_for_col[col], percentile_cutoffs)
+    cutoff_vals = [-np.inf] + list(cutoff_vals) + [np.inf]
+    print('cutoffs for %s' % col, cutoff_vals)
+    d_for_col['%s_quartile' % col] = None
+
+    for i in range(len(cutoff_vals) - 1):
+        quartile_idxs = d_for_col[col].map(lambda x:(x >= cutoff_vals[i]) & (x < cutoff_vals[i + 1]))
+        d_for_col.loc[quartile_idxs, '%s_quartile' % col] = '%s_quartile_%i' % (col, i + 1)
+        print('number of rows in %s: %i' % ('%s_quartile' % col, quartile_idxs.sum()))
+    bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(df=d_for_col, 
+                             fxn_to_apply=weighted_disparities_estimator_two_level_grouping, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'high_level_group_col':'%s_quartile' % col,
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='%s_bootstraps.json' % col)
+
+    print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
+
+    print_whole_screen_line()
+    
+# zone table. Emma reviewed. 
+bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(df=d_for_demo_analysis, 
+                             fxn_to_apply=weighted_disparities_estimator_two_level_grouping, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'high_level_group_col':'zone',
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='zone_bootstraps.json')
+
+print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
+
+print_whole_screen_line()
+
+# boro table. Emma reviewed. 
+bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(df=d_for_demo_analysis, 
+                             fxn_to_apply=weighted_disparities_estimator_two_level_grouping, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'high_level_group_col':'boroname',
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='boro_bootstraps.json')
+
+print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
+
+print_whole_screen_line()
+
+# neighborhood table. Emma reviewed. 
+bootstrap_point_estimate, bootstrap_statistics = bootstrap_function_errorbars(df=d_for_demo_analysis, 
+                             fxn_to_apply=weighted_disparities_estimator_two_level_grouping, 
+                             fxn_kwargs={'census_area_col':LOCATION_COL_TO_GROUP_ON, 
+                                         'high_level_group_col':NEIGHBORHOOD_COL,
+                                         'total_population_col':TOTAL_POPULATION_COL, 
+                                         'estimate_col':'calibrated_prediction'}, 
+                             n_bootstraps=N_BOOTSTRAPS, 
+                             filename='neighborhood_bootstraps.json')
+
+print(create_table_from_bootstrap_results(bootstrap_point_estimate, bootstrap_statistics).to_string())
 
 
 for prediction_col in PREDICTION_COLS:
@@ -701,6 +771,7 @@ for prediction_col in PREDICTION_COLS:
             continue
         # compute weighted mean as described in Census tract. 
         grouped_mean = (grouped_d[prediction_col] * grouped_d[demo_col]).sum()/grouped_d[demo_col].sum()
+       
         print(demo_col, grouped_mean)
         estimates[demo_col] = grouped_mean
     print("Ratio of Black estimate to white estimate: %2.3f" % (estimates[BLACK_POPULATION_COL]/estimates[WHITE_POPULATION_COL]))
@@ -711,17 +782,14 @@ print_whole_screen_line()
 
 # ### Correlations Between All Measures 
 
-# In[36]:
-
-
 # Pearson Correlation Coefficient
 pearson_corr = grouped_d.loc[grouped_d[TOTAL_POPULATION_COL] > MIN_POPULATION_IN_AREA, DEMOGRAPHIC_COLS].corr(method='pearson')
 mask = np.triu(np.ones_like(pearson_corr, dtype=bool))
 heatmap = sns.heatmap(pearson_corr, mask=mask, vmin=-1, vmax=1, annot=True, cmap='BrBG')
 heatmap.set_title('Pearson Correlations', fontdict={'fontsize':18}, pad=16);
-plt.savefig(f"{PAPER_GIT_REPO_PATH}/pearson_correlations.png")
+plt.savefig(f"{PAPER_GIT_REPO_PATH}/pearson_correlations.png", bbox_inches='tight')
 
-# In[37]:
+# 
 
 
 # Spearman Correlation Coefficient
@@ -729,20 +797,18 @@ spearman_corr = grouped_d.loc[grouped_d[TOTAL_POPULATION_COL] > MIN_POPULATION_I
 mask = np.triu(np.ones_like(spearman_corr, dtype=bool))
 heatmap = sns.heatmap(spearman_corr, mask=mask, vmin=-1, vmax=1, annot=True, cmap='BrBG')
 heatmap.set_title('Spearman Correlations', fontdict={'fontsize':18}, pad=16);
-plt.savefig(f"{PAPER_GIT_REPO_PATH}/spearman_correlations.png")
+plt.savefig(f"{PAPER_GIT_REPO_PATH}/spearman_correlations.png", bbox_inches='tight')
 
 # ### Breakdown by Neighborhood 
-
-# In[38]:
 
 
 for col in PREDICTION_COLS:
     print("\n\nneighborhoods with highest mean values of %s" % col)
     print(d_for_demo_analysis
           .groupby(NEIGHBORHOOD_COL)[col]
-          .agg(['mean', 'size'])
+          .mean()
           .reset_index()
-          .sort_values(by='mean')[::-1])
+          .sort_values()[::-1])
 nta_breakdown = d_for_demo_analysis.groupby(NEIGHBORHOOD_COL)['calibrated_prediction'].agg(['mean', 'size']).reset_index().sort_values(by='mean')[::-1]
 print_whole_screen_line()
 
@@ -751,14 +817,14 @@ print_whole_screen_line()
 
 # ### Plot Data Loaded from Bootstraps 
 
-# In[39]:
+# 
 
 
 import json
-nta_data = json.load(open("/share/pierson/nexar_data/bootstraps_for_matt/neighborhood_bootstraps.json"))
+nta_data = json.load(open(f"{PAPER_GIT_REPO_PATH}/neighborhood_bootstraps.json"))
 
 
-# In[40]:
+# 
 
 
 nta_rta_means = pd.DataFrame.from_dict(nta_data['point_estimate'], orient='index')
@@ -768,13 +834,13 @@ nta_rta_means.columns = ['Pr_police_rta']
 nta_rta_means
 
 
-# In[41]:
+# 
 
 
 nyc_ntas = nyc_ntas.merge(nta_rta_means, left_on='NTAName', right_index=True, how='left')
 
 
-# In[42]:
+# 
 
 
 bins = [0, 0.25, 0.5, 0.75, 1, 2, 3,  4, 5]
@@ -782,8 +848,6 @@ bins = [0, 0.25, 0.5, 0.75, 1, 2, 3,  4, 5]
 nyc_ntas['Pr_police_rta'].fillna(0, inplace=True)
 nyc_ntas['pr_quantile'] = pd.cut(nyc_ntas['Pr_police_rta'], bins)
 
-
-# In[44]:
 
 
 fig, ax = plt.subplots(figsize=(24,24))
@@ -796,7 +860,7 @@ n = 16 # how many lines to draw or number of discrete color levels
 cmap = plt.get_cmap(colormap)
 
 norm = matplotlib.colors.Normalize(vmin=0, vmax=5)
-stretched_bounds = np.interp(np.linspace(0, 1, 257), np.linspace(0, 1, 16), [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
+stretched_bounds = np.interp(np.linspace(0, 1, 257), np.linspace(0, 1, 17), [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
 # normalize stretched bound values
 norm = matplotlib.colors.BoundaryNorm(stretched_bounds, ncolors=256)
 scalarmap = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -813,10 +877,6 @@ plt.savefig(f'{PAPER_GIT_REPO_PATH}/figures/Pr_police_rta_ntas.pdf')
 
 
 # ### VARIANT: Un-bootstrapped Data 
-
-# In[45]:
-
-
 fig, ax = plt.subplots(figsize=(12,12))
 
 try: 
@@ -848,29 +908,28 @@ nyc_ntas_proj_demo.calibrated_prediction.fillna(0, inplace=True)
 nyc_ntas_proj_demo.calibrated_prediction_decile = pd.qcut(nyc_ntas_proj_demo.calibrated_prediction, 5, duplicates='drop')
 print(nyc_ntas_proj_demo.calibrated_prediction.describe())
 
-
-
 nybb.plot(ax=ax, edgecolor='grey', color='w')
 nyc_ntas_proj_demo.plot(column=nyc_ntas_proj_demo.calibrated_prediction_decile, ax=ax, cmap='cividis', legend=True, legend_kwds={'title':'Calibrated Probability of Police Exposure'})
 
-
-
-
-
 plt.axis('off')
 plt.tight_layout()
-#plt.savefig(f"{PAPER_GIT_REPO_PATH}/figures/Pr_police_by_nta.jpg", dpi=450)
+plt.savefig(f"{PAPER_GIT_REPO_PATH}/figures/Pr_police_by_nta_point_estimates.pdf", dpi=450)
 
 
 # ### VARIANT2: More granular, exposure by CBG 
+dgdf_for_demo_by_cbgs = gpd.sjoin(nyc_cbgs, d_for_demo_analysis, how='left', predicate='contains')
+groupby_cols = ['index']
 
-# In[46]:
+# aggregate via mean, but only for numeric columns 
+agg_function = {
+    "number": 'mean', 
+    "object": lambda col: col.mode()
+    }
+agg_dct = {k: v for i in [{col: agg for col in dgdf_for_demo_by_cbgs.select_dtypes(tp).columns.difference(groupby_cols)} for tp, agg in agg_function.items()] for k, v in i.items()}
 
+dgdf_for_demo_by_cbgs = dgdf_for_demo_by_cbgs.groupby(groupby_cols).agg(**{k: (k, v) for k, v in agg_dct.items()})
 
-dgdf_for_demo_by_cbgs = gpd.sjoin(nyc_cbgs, d_for_demo_analysis, how='left', predicate='contains').groupby('index').agg('mean')
-
-
-# In[47]:
+# 
 
 
 fig, ax = plt.subplots(figsize=(12,12))
@@ -883,307 +942,9 @@ nyc_cbgs_proj_demo.plot(column=nyc_cbgs_proj_demo.calibrated_prediction_decile, 
 
 plt.axis('off')
 
-plt.savefig(f'{PAPER_GIT_REPO_PATH}/PR_police_by_cbg.jpg', dpi=450)
-
-
-# ### Table of neighborhoods with highest police levels  (include borough as a column as well assuming that each neighborhood is only in one borough). 
-
-# In[48]:
-
-
-print(nyc_cbgs_proj_demo['Estimate_Total'].sum())
-
-nta_breakdown_top10 = nyc_ntas_proj_demo.sort_values(by='calibrated_prediction')[::-1][:10][["NTAName", "BoroName", "calibrated_prediction"]]
-
-rename = {"NTAName": "Neighborhood", "BoroName": "Borough", "calibrated_prediction": "Calibrated Probability of Police Exposure"}
-
-nta_breakdown_top10.rename(columns=rename, inplace=True)
-
-nta_breakdown_top10.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/nta_breakdown_top10.tex', index=False, float_format="%.2f")
-
-nta_breakdown_top10
-
-
-# ### Table of police levels by borough (currently this is showing big disparities for Manhattan)
-
-# In[49]:
-
-
-boro_breakdown = d_for_demo_analysis.groupby('boroname')['calibrated_prediction'].agg(['mean']).sort_values(by='mean')[::-1]
-
-boro_populations = nyc_cbgs_proj_demo.groupby('borocode')['Estimate_Total'].agg('sum')
-
-boro_populations.index = boro_breakdown.index
-
-
-cols=['calibrated_prediction_mean', 'calibrated_prediction_size', 'calibrated_prediction_sum', 'total_population_mean', 'total_population_size', 'total_population_sum']
-
-rename = {"mean": "Calibrated Probability of Police Exposure", "Index": "Borough"}
-boro_breakdown = boro_breakdown.rename(columns=rename)
-#boro_breakdown.columns=boro_breakdown.columns.droplevel(0) 
-#boro_breakdown.columns = cols
-
-boro_breakdown['Total Population'] = boro_populations
-boro_breakdown = boro_breakdown.rename_axis('Borough')
-
-
-boro_breakdown['Population Weighted Probability of Police'] = (boro_breakdown['Calibrated Probability of Police Exposure'] * boro_breakdown['Total Population']) / boro_breakdown['Total Population'].sum() 
-boro_breakdown['Population Weighted Probability of Police, Relative to Mean'] = boro_breakdown['Population Weighted Probability of Police'] / boro_breakdown['Population Weighted Probability of Police'].mean()
-
-boro_breakdown = boro_breakdown['Population Weighted Probability of Police, Relative to Mean']
-boro_breakdown.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/borough_breakdown.tex', index=True, float_format="%.2f")    
-
-boro_breakdown
-
-
-# ### Police levels by zone (residential vs commercial etc). 
-
-# In[50]:
-
-
-nyc_zoning_demo = gpd.overlay(nyc_cbgs_proj_demo, nyc_zoning, how='intersection')
-
-
-# In[51]:
-
-
-nyc_zoning_demo.plot()
-
-
-# In[52]:
-
-
-nyc_cbgs_proj_demo.geometry.area.describe()
-
-
-# In[53]:
-
-
-nyc_cbgs_proj_demo.groupby('GEOID20').agg('first')["shape_area"].describe()
-
-
-# In[54]:
-
-
-nyc_zoning_demo['subarea'] = nyc_zoning_demo.geometry.area
-nyc_zoning_demo.subarea.describe()
-
-
-# In[55]:
-
-
-fig, ax = plt.subplots(figsize=(8,8))
-nyc_cbgs_proj_demo.plot(ax=ax, color='blue', alpha=0.5)
-nyc_zoning_demo.plot(ax=ax, color='red', alpha=0.5)
-nyc_zoning_demo.groupby('GEOID20').agg('first').plot(ax=ax, color='green', alpha=0.8)
-
-
-# In[56]:
-
-
-nyc_zoning_demo.groupby('GEOID20').agg('first').geometry.area.describe()
-
-
-# In[57]:
-
-
-cbgs_by_zone_prop = nyc_zoning_demo.groupby(['GEOID20','high_level_zone'])["subarea"].agg('sum').unstack(level=1).fillna(0).div(nyc_cbgs_proj_demo.set_index('GEOID20').geometry.area, axis='rows') 
-cbgs_by_zone_prop
-residential_cbgs = cbgs_by_zone_prop[cbgs_by_zone_prop.R > 0.9]
-commercial_cbgs = cbgs_by_zone_prop[cbgs_by_zone_prop.C > 0.9]
-manufacturing_cbgs = cbgs_by_zone_prop[cbgs_by_zone_prop.M > 0.9]
-
-
-print(commercial_cbgs)
-print(manufacturing_cbgs)
-
-
-# In[58]:
-
-
-residential_grouped_d = grouped_d[grouped_d.index.isin(residential_cbgs.index)]
-commercial_grouped_d = grouped_d[grouped_d.index.isin(commercial_cbgs.index)]
-manufacturing_grouped_d = grouped_d[grouped_d.index.isin(manufacturing_cbgs.index)]
-
-
-# In[59]:
-
-
-print(d_for_demo_analysis.columns)
-#dgdf_for_demo_analysis.drop('index_right', axis=1, inplace=True)
-d_mapped_to_zones = gpd.sjoin(nyc_zoning, d_for_demo_analysis)
-
-
-# In[60]:
-
-
-pr_by_zone = d_mapped_to_zones.groupby('ZONEDIST').agg('mean','size')[['calibrated_prediction','density_cbg']].sort_values(by='calibrated_prediction')[::-1]
-pr_by_zone.index.values
-m = [x for x in pr_by_zone.index.values if 'M' in x]
-c = [x for x in pr_by_zone.index.values if 'C' in x]
-r = [x for x in pr_by_zone.index.values if 'R' in x]
-# r also picks up 'PARK' and 'PLAYGROUND' which is a convenient catch in my mind 
-print(m)
-print(c)
-print(r)
-
-m_pr = pr_by_zone[pr_by_zone.index.isin(m)]
-c_pr = pr_by_zone[pr_by_zone.index.isin(c)]
-r_pr = pr_by_zone[pr_by_zone.index.isin(r)]
-
-
-
-def zone_classifier(z): 
-    if 'R' in z: 
-        return 'R'
-    elif 'C' in z:
-        return 'C'
-    elif 'M' in z:
-        return 'M'
-
-print(m_pr.agg('mean'), c_pr.agg('mean'), r_pr.agg('mean'))
-print(c_pr.agg('mean') / r_pr.agg('mean'))
-
-pr_by_zone['type'] = pr_by_zone.index.map(lambda x: zone_classifier(x))
-pr_by_zone
-
-
-# In[61]:
-
-
-
-
-def population_weighting(metric_to_weight, weights):
-    return (metric_to_weight * weights).sum() / weights.sum()
-
-
-r_pr = population_weighting(residential_grouped_d.calibrated_prediction, residential_grouped_d['Estimate_Total'])
-c_pr = population_weighting(commercial_grouped_d.calibrated_prediction, commercial_grouped_d['Estimate_Total'])
-m_pr = population_weighting(manufacturing_grouped_d.calibrated_prediction, manufacturing_grouped_d['Estimate_Total'])
-
-
-data = {'Residential': r_pr, 'Commercial': c_pr, 'Manufacturing': m_pr}
-print(data)
-pr_by_zone_table = pd.DataFrame.from_dict(data, orient='index')
-
-pr_by_zone_table = pr_by_zone_table.rename_axis('Zoning Type')
-pr_by_zone_table.columns = ['Population-Weighted Probability of Police Exposure']
-
-
-#pr_by_zone_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/pr_by_zone_type.tex', float_format="%.2f")
-
-pr_by_zone_table
-
-
-
-
-# ### Police levels by race 
-
-# In[62]:
-
-
-for prediction_col in PREDICTION_COLS:
-    print("Using prediction col", prediction_col)
-    estimates = {}
-    for demo_col in POPULATION_COUNT_COLS:
-        if demo_col == TOTAL_POPULATION_COL:
-            continue
-        # compute weighted mean as described in Census tract. 
-        grouped_mean = (grouped_d[prediction_col] * grouped_d[demo_col]).sum()/grouped_d[demo_col].sum()
-        print(demo_col, grouped_mean)
-        estimates[demo_col] = grouped_mean
-    print("Ratio of Black estimate to white estimate: %2.3f" % (estimates[BLACK_POPULATION_COL]/estimates[WHITE_POPULATION_COL]))
-
-
-pr_by_race_table = pd.DataFrame.from_dict(estimates, orient='index')
-pr_by_race_table['Weighted Probability of Police, Relative to Mean'] = pr_by_race_table.iloc[:,0] / pr_by_race_table.iloc[:,0].mean()
-
-nice_names = {'Estimate_Total_Not_Hispanic_or_Latino_White_alone': 'White', 'Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone': 'Black/African American', 'Estimate_Total_Not_Hispanic_or_Latino_Asian_alone': 'Asian', 'Estimate_Total_Hispanic_or_Latino': 'Hispanic / Some other race'}
-pr_by_race_table.index = pr_by_race_table.index.map(lambda x: nice_names[x])
-pr_by_race_table = pr_by_race_table['Weighted Probability of Police, Relative to Mean']
-
-
-
-pr_by_race_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/pr_by_race.tex', index=True, float_format="%.2f")    
-pr_by_race_table
-print_whole_screen_line()
-
-
-# ### Police levels by race (only residential zones)
-
-# In[63]:
-
-
-for prediction_col in PREDICTION_COLS:
-    print("Using prediction col", prediction_col)
-    estimates = {}
-    for demo_col in POPULATION_COUNT_COLS:
-        if demo_col == TOTAL_POPULATION_COL:
-            continue
-        # compute weighted mean as described in Census tract. 
-        grouped_mean = (residential_grouped_d[prediction_col] * residential_grouped_d[demo_col]).sum()/residential_grouped_d[demo_col].sum()
-        print(demo_col, grouped_mean)
-        estimates[demo_col] = grouped_mean
-    #print("Ratio of Black estimate to white estimate: %2.3f" % (estimates[demo_col]/estimates[WHITE_POPULATION_COL]))
-
-
-pr_by_race_rzones_table = pd.DataFrame.from_dict(estimates, orient='index')
-pr_by_race_rzones_table['Weighted Probability of Police, Relative to Mean'] = pr_by_race_table.values
-pr_by_race_rzones_table['Weighted Probability of Police, Relative to Mean [R Zoning Only]'] = pr_by_race_rzones_table.iloc[:,0] / pr_by_race_rzones_table.iloc[:,0].mean()
-
-nice_names = {'Estimate_Total_Not_Hispanic_or_Latino_White_alone': 'White', 'Estimate_Total_Not_Hispanic_or_Latino_Black_or_African_American_alone': 'Black/African American', 'Estimate_Total_Not_Hispanic_or_Latino_Asian_alone': 'Asian', 'Estimate_Total_Hispanic_or_Latino': 'Hispanic / Some other race'}
-pr_by_race_rzones_table.index = pr_by_race_rzones_table.index.map(lambda x: nice_names[x])
-pr_by_race_rzones_table = pr_by_race_rzones_table.iloc[:,1:]
-
-
-
-pr_by_race_rzones_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/pr_by_race_residential.tex', index=True, float_format="%.2f")    
-
-
-pr_by_race_rzones_table
-print_whole_screen_line()
-
-
-# ### Arrest Rates Plot
-
-# In[64]:
-
-
-nyc_arrests = pd.read_csv("/share/pierson/nexar_data/5_other_datasets/NYPD_Arrests_Data__Historic_.csv")
-
-
-# In[65]:
-
-
-nyc_arrests = gpd.GeoDataFrame(nyc_arrests, geometry=gpd.points_from_xy(nyc_arrests.Longitude, nyc_arrests.Latitude), crs=WGS)
-nyc_arrests = nyc_arrests.to_crs(PROJ_CRS)
-
-
-# In[66]:
-
-
-arrests_by_nta = gpd.sjoin(nyc_arrests,nyc_ntas).groupby('NTAName').agg('size').to_frame('num_arrests')
-
-
-# In[67]:
-
-
-nyc_ntas = nyc_ntas.merge(arrests_by_nta, left_on='NTAName', right_on='NTAName')
-
-
-# In[ ]:
-
-
-
-
+plt.savefig(f'{PAPER_GIT_REPO_PATH}/figures/PR_police_by_cbg_point_estimates.pdf', dpi=450)
 
 # ## 5. Model Development & Evaluation Plots
-
-# ### P/R on V/T Sets 
-
-# In[68]:
-
-
 # Metrics 
 pandr_vt = pd.DataFrame()
 p = []
@@ -1210,7 +971,7 @@ pandr_vt.index = rows
 pandr_vt.to_latex(f"{PAPER_GIT_REPO_PATH}/tables/pandr_vt.tex", float_format="%.2f")
 
 
-# In[69]:
+# 
 
 
 from sklearn import metrics
@@ -1248,7 +1009,7 @@ perf_stats.to_latex(f"{PAPER_GIT_REPO_PATH}/tables/performance_vt.tex", float_fo
 
 # ### Combined AUC / AUPRC Plot 
 
-# In[70]:
+# 
 
 
 import matplotlib.pyplot as plt
@@ -1307,19 +1068,19 @@ plt.savefig(f"{PAPER_GIT_REPO_PATH}/figures/test_auc_auprc.pdf")
 
 # ### Tuning: Additional Feature on Calibration Plot for In/Out of Manhattan
 
-# In[71]:
+# 
 
 
 tgdf_with_boro = gpd.sjoin(tgdf, nybb)
 
 
-# In[72]:
+# 
 
 
 t["Manhattan"] = tgdf_with_boro['BoroName'] == "Manhattan"
 
 
-# In[73]:
+# 
 
 
 t["Manhattan"].describe()
@@ -1327,7 +1088,7 @@ t["Manhattan"].describe()
 
 # ### Calibration Plots 
 
-# In[74]:
+# 
 
 
 if 'ground_truth' not in t.columns:
@@ -1430,7 +1191,7 @@ plt.savefig(f"{PAPER_GIT_REPO_PATH}/figures/calplots.pdf")
 
 # ### AUC/ AUPRC By Subgroups Table 
 
-# In[75]:
+# 
 
 
 from sklearn import metrics
@@ -1477,12 +1238,3 @@ vars_to_plot_names = ['Phase 1', 'Weekend', 'Daytime', 'Percent White > Median',
 auc_auprc_results_table.index = auc_auprc_results_table.index.map(subgroups_print)
 auc_aurpc_results_table = auc_auprc_results_table.iloc[::-1]
 auc_auprc_results_table.to_latex(f'{PAPER_GIT_REPO_PATH}/tables/auc_auprc_results_by_subgroup.tex', float_format="%.2f") 
-
-auc_aurpc_results_table
-
-
-# In[ ]:
-
-
-
-
